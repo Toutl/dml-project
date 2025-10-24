@@ -1,0 +1,9 @@
+# Specific
+docs
+data/images_gz2
+data/images_gz2.zip
+
+# General
+**/*.code-workspace
+**/*.ipynb
+**/.venv
