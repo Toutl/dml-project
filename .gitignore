@@ -1,7 +1,7 @@
 # Specific
 docs
-data/images_gz2
-data/images_gz2.zip
+data/classification/images_gz2
+data/classification/gz2_hart16.csv
 
 # General
 **/*.code-workspace
