@@ -8,7 +8,7 @@ In this project, we will build two ML models inspired by data from the Sloan Dig
 One will be a regression model, and the other a classification model.
 
 ## Regression model
-<!-- MAYBE This model focuses on predicting *spectroscopic redshift* from photometric data — a task commonly known as *photometric redshift* estimation. -->
+MAYBE This model focuses on predicting *spectroscopic redshift* from photometric data — a task commonly known as *photometric redshift* estimation.
 
 <!-- TODO: Explanation -->
 
