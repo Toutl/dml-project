@@ -19,7 +19,7 @@ This model aims to classify galaxy images according to their morphology.
 ## Data:
 You can download the galaxy images here:
 [Images (Zenodo)](https://zenodo.org/records/3565489/files/images_gz2.zip?download=1)
-
+[Classification Table (GalaxyZoo)](https://gz2hart.s3.amazonaws.com/gz2_hart16.csv.gz)
 <!-- TODO: Explanation -->
 
 <!-- ## References -->
