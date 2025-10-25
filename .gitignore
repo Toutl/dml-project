@@ -5,5 +5,5 @@ data/classification/gz2_hart16.csv
 
 # General
 **/*.code-workspace
-**/*.ipynb
 **/.venv
+venv/
