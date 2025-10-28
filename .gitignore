@@ -6,4 +6,8 @@ data/classification/gz2_hart16.csv
 # General
 **/*.code-workspace
 **/.venv
-venv/
+**/venv/
+**/uv.lock
+**/.ipynb_checkpoints
+**/pyproject.toml
+
