@@ -47,7 +47,7 @@ from skimage import io
 
 # %%
 # Swag
-plt.style.use("/home/toutl/code/.toutl.mplstyle")
+plt.style.use("/home/toutl/code/.machine.mplstyle")
 
 # %% [markdown]
 # ---
@@ -324,7 +324,7 @@ def crop_galaxy(data, factor=1.5):
 # Al tener muchas imágenes lo probamos con una pequeña cantidad
 
 # %%
-path = "../data/classification/small/"
+path = "../data/classification/sample_images_gz2/"
 data = cargar_img(path)
 binary = applied_mask(data)  # mascara aplicada
 croped = crop_galaxy(data)

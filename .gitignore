@@ -5,6 +5,7 @@ data/classification/gz2_hart16.csv
 
 # General
 **/*.code-workspace
+**/.vscode
 **/.venv
 **/venv/
 **/uv.lock
