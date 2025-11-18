@@ -1,7 +1,8 @@
 # Specific
 docs
-data/classification/images_gz2
-data/classification/gz2_hart16.csv
+data/classification/original/images_gz2
+data/classification/original/gz2_hart16.csv
+data/classification/processed/processed_images.npz
 
 # General
 **/*.code-workspace
