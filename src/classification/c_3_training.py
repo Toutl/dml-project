@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.18.1
+#       jupytext_version: 1.17.3
 #   kernelspec:
 #     display_name: dml-project
 #     language: python
@@ -273,3 +273,27 @@ visualize_training(hist_cnn)
 # %%
 score_cnn = cnn_model.evaluate(data.x_test, data.y_test, verbose=0)
 print(f"Accuracy CNN: {score_cnn[1] * 100:.2f}%")
+
+# %% [markdown]
+# ---
+
+# %% [markdown]
+# ### Modelo 2. Supor Vector Classifier:
+
+# %%
+from sklearn.decomposition import PCA
+pca = PCA(n_components=,whiten=).fg
+
+# %% [markdown]
+# ---
+
+# %% [markdown]
+# ### Modelo 3. MLP:
+
+# %% [markdown]
+# ---
+
+# %% [markdown]
+# ### Modelo 4. Logistic Regression:
+
+# %%
