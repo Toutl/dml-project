@@ -6,9 +6,9 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.3
+#       jupytext_version: 1.18.1
 #   kernelspec:
-#     display_name: venvp
+#     display_name: dml-project
 #     language: python
 #     name: python3
 # ---
@@ -171,50 +171,6 @@ data = Data(
 # ### Modelo 1. CNN:
 
 # %%
-def build_binary_cnn():
-    model = Sequential()
-
-    model.add(
-        Conv2D(
-            filters=16,
-            kernel_size=3,
-            padding="same",
-            activation="relu",
-            input_shape=data.x_train.shape[1:],
-        )
-    )
-    model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=2))
-
-    model.add(Conv2D(filters=32, kernel_size=3, padding="same", activation="relu"))
-    model.add(MaxPooling2D(pool_size=2))
-
-    model.add(Conv2D(filters=64, kernel_size=3, padding="same", activation="relu"))
-    model.add(MaxPooling2D(pool_size=2))
-
-    model.add(Conv2D(filters=128, kernel_size=3, padding="same", activation="relu"))
-    model.add(MaxPooling2D(pool_size=2))
-
-    model.add(Dropout(0.3))
-
-    model.add(Flatten())
-
-    model.add(Dense(64, activation="relu"))
-    model.add(Dropout(0.4))
-
-    model.add(Dense(1, activation="sigmoid"))
-
-    optimizer = Adam(learning_rate=1e-4)
-    model.compile(
-        loss="binary_crossentropy",
-        optimizer=optimizer,  # type: ignore
-        metrics=["accuracy"],
-    )
-
-    return model
-
-
-# %%
 def visualize_training(hist):
     plt.plot(hist.history["accuracy"])
     plt.plot(hist.history["val_accuracy"])
@@ -235,11 +191,48 @@ def visualize_training(hist):
 
 
 # %%
+def build_binary_cnn(data):
+    model = Sequential()
+
+    model.add(Input(shape=data.x_train.shape[1:]))
+
+    model.add(Conv2D(filters=32, kernel_size=3, padding="same", activation="relu"))
+    model.add(BatchNormalization())
+    model.add(MaxPooling2D(pool_size=2))
+
+    model.add(Conv2D(filters=32, kernel_size=3, padding="same", activation="relu"))
+    model.add(MaxPooling2D(pool_size=2))
+
+    model.add(Conv2D(filters=64, kernel_size=3, padding="same", activation="relu"))
+    model.add(MaxPooling2D(pool_size=2))
+
+    model.add(Conv2D(filters=128, kernel_size=3, padding="same", activation="relu"))
+    model.add(MaxPooling2D(pool_size=2))
+
+    model.add(Dropout(0.2))
+    model.add(Flatten())
+
+    model.add(Dense(64, activation="relu"))
+    model.add(Dropout(0.3))
+
+    model.add(Dense(1, activation="sigmoid"))
+
+    optimizer = Adam(learning_rate=3e-4)
+    model.compile(
+        loss="binary_crossentropy",
+        optimizer=optimizer,  # type: ignore
+        metrics=["accuracy"],
+    )
+
+    return model
+
+
+# %%
 # Callbacks para el fit del modelo, funcionan para encontrar el mejor epoch
 early_stop = EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True)
 
 # %%
-cnn_model = build_binary_cnn()
+cnn_model = build_binary_cnn(data)
 cnn_model.summary()
 
 # %%
@@ -254,10 +247,6 @@ display(
 )
 
 # %%
-print(data.x_train.shape)
-print(data.x_train.min(), data.x_train.max())
-
-# %%
 hist_cnn = cnn_model.fit(
     data.x_train,
     data.y_train,
@@ -270,7 +259,6 @@ hist_cnn = cnn_model.fit(
 # %%
 visualize_training(hist_cnn)
 
-# %%
 score_cnn = cnn_model.evaluate(data.x_test, data.y_test, verbose=0)
 print(f"Accuracy CNN: {score_cnn[1] * 100:.2f}%")
 
@@ -282,40 +270,40 @@ print(f"Accuracy CNN: {score_cnn[1] * 100:.2f}%")
 
 # %%
 from sklearn.decomposition import PCA
-from sklearn.svm import SVC
-from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import classification_report
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.svm import SVC
 
 # %%
 n_samples_train = data.x_train.shape[0]
 n_samples_test = data.x_test.shape[0]
 
-x_train_flatt = x_train.reshape((n_samples_train,-1))
-x_test_flatt  = x_test.reshape((n_samples_test,-1))
+x_train_flatt = data.x_train.reshape((n_samples_train, -1))
+x_test_flatt = data.x_test.reshape((n_samples_test, -1))
 
 # %%
-# le hacemos pca a los datos de prueba
-pca = PCA(n_components=0.95,whiten=True).fit(x_train_flatt)
-x_train_pca = pca.transform(x_train_flatt)
-x_test_pca = pca.transform(x_test_flatt)
+pipe = Pipeline(
+    [
+        ("pca", PCA(n_components=0.95, whiten=True, random_state=42)),
+        ("svc", SVC(class_weight="balanced", kernel="rbf")),
+    ]
+)
 
-# %%
-param_grid = {'C': [1, 5, 10, 50],
-              'gamma': [0.0001, 0.0005, 0.001, 0.005]} #por lo general son valores menores a 1
+param_grid = {
+    "svc__C": [3, 4, 5, 6, 7],
+    "svc__gamma": [0.0008, 0.001, 0.0012],
+}
 
-model = SVC(kernel='rbf', class_weight='balanced') #problemas multiclase
-grid = GridSearchCV(model, param_grid, scoring='roc_auc')
+grid = GridSearchCV(pipe, param_grid, scoring="roc_auc", verbose=True, n_jobs=-1)
 
-grid.fit(x_train_pca, y_train)
+grid.fit(x_train_flatt, y_train)
 print(grid.best_params_)
 
 # %%
-model = grid.best_estimator_
-y_pred = model.predict(x_test_pca)
-
-# %%
-
+y_pred = grid.predict(x_test_flatt) 
 print(classification_report(y_test, y_pred))
+
 
 # %% [markdown]
 # ---
@@ -323,10 +311,54 @@ print(classification_report(y_test, y_pred))
 # %% [markdown]
 # ### Modelo 3. MLP:
 
+# %%
+def build_binary_mlp(data):
+    model = Sequential()
+
+    model.add(Flatten(input_shape=data.x_train.shape[1:]))
+
+    model.add(Dense(512, activation="relu"))
+    model.add(Dropout(0.3))
+
+    model.add(Dense(512, activation="relu"))
+    model.add(Dropout(0.3))
+
+    model.add(Dense(1, activation="sigmoid"))
+
+    model.compile(
+        loss="binary_crossentropy",
+        optimizer=Adam(3e-4),  # type: ignore
+        metrics=["accuracy"],
+    )
+
+    return model
+
+
+# %%
+early_stop = EarlyStopping(monitor="val_loss", patience=10, restore_best_weights=True)
+
+# %%
+mlp_model = build_binary_mlp(data)
+mlp_model.summary()
+
+# %%
+hist_mlp = mlp_model.fit(
+    data.x_train,
+    data.y_train,
+    batch_size=32,
+    epochs=40,
+    validation_data=(data.x_valid, data.y_valid),
+    callbacks=[early_stop],
+)
+
+# %%
+visualize_training(hist_mlp)
+
+score_mlp = mlp_model.evaluate(data.x_test, data.y_test, verbose="0")
+print(f"Accuracy CNN: {score_mlp[1] * 100:.2f}%")
+
 # %% [markdown]
 # ---
 
 # %% [markdown]
 # ### Modelo 4. Logistic Regression:
-
-# %%
