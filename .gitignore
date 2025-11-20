@@ -3,6 +3,7 @@ docs
 data/classification/original/images_gz2
 data/classification/original/gz2_hart16.csv
 data/classification/processed/processed_images.npz
+data/classification/processed/processed_images.zip
 
 # General
 **/*.code-workspace
