@@ -105,12 +105,12 @@ def crop_to_object(image, mask, scale=1.5):
     return image[r0:r1, c0:c1]
 
 
-def resize_image(image, size=(128, 128)):
+def resize_image(image, size=(64, 64)):
     return cv2.resize(image, size)
 
 
 def normalize_intensity(image):
-    return image / 255
+    return np.array(image / 255).astype("float16")
 
 
 # %% [markdown]
@@ -165,13 +165,30 @@ display(images_metadata_df.head())
 # %% [markdown]
 # Se decidió eliminar la clase de Artefactos y objetos no especificados (`A`) por su reducida proporción en el conjunto de datos.
 
+# %% [markdown]
+# Además, por la gran cantidad de datos se tomará una muestra proporcional de los mismos.
+
 # %%
-filenames = (
-    images_metadata_df[images_metadata_df["class"].isin(["S", "E"])]["image_id"]
-    .astype(str)
-    .add(".jpg")
-    .values
+cleaned_metadata = images_metadata_df.loc[
+    images_metadata_df["class"].isin(["S", "E"])
+].assign(**{"class": lambda df: df["class"].map({"S": 0, "E": 1})})
+
+display(cleaned_metadata)
+
+# %%
+from sklearn.model_selection import train_test_split
+
+# %%
+sample_metadata, _ = train_test_split(
+    cleaned_metadata,
+    test_size=0.85,
+    stratify=cleaned_metadata["class"],
+    random_state=35,
 )
+display(sample_metadata)
+
+# %%
+filenames = sample_metadata["image_id"].astype(str).add(".jpg").values
 
 display(filenames[:10])
 
@@ -204,14 +221,31 @@ def apply_pipeline_to_all(filenames):
 processed_images = apply_pipeline_to_all(filenames)
 
 # %%
-np.savez(processed_folder / "processed_images.npz", *processed_images)
+to_save_filename = f"sample_64x64_{len(sample_metadata)}"
+
+sample_metadata.to_csv(processed_folder / f"{to_save_filename}.csv", index=False)
 
 # %%
-arrays_file = np.load(processed_folder / "processed_images.npz")
-images_metadata_df.head()
-file = arrays_file.files[3]
-plt.imshow(arrays_file[file], cmap="grey", label=file)
-plt.legend()
+# Guardamos los arreglos procesados en un archivo de matrices de numpy
+np.savez(
+    processed_folder / f"{to_save_filename}.npz",
+    **{
+        filename: arr
+        for filename, arr in zip(
+            images_metadata_df["image_id"].astype(str), processed_images
+        )
+    },
+)
+
+# %%
+# Ejemplo de lectura de imágenes
+arrays_file = np.load(processed_folder / f"{to_save_filename}.npz")
+
+print("Array names: ", arrays_file.files[:10])
+
+file = images_metadata_df["image_id"].astype(str)[3]
+print("File name:", file)
+plt.imshow(arrays_file[file], cmap="grey")
 plt.show()
 
 # %% [markdown]
