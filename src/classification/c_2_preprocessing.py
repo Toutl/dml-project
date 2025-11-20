@@ -232,7 +232,7 @@ np.savez(
     **{
         filename: arr
         for filename, arr in zip(
-            images_metadata_df["image_id"].astype(str), processed_images
+            sample_metadata["image_id"].astype(str), processed_images
         )
     },
 )
@@ -243,8 +243,8 @@ arrays_file = np.load(processed_folder / f"{to_save_filename}.npz")
 
 print("Array names: ", arrays_file.files[:10])
 
-file = images_metadata_df["image_id"].astype(str)[3]
-print("File name:", file)
+file = sample_metadata["image_id"].astype(str).reset_index().loc[0]["image_id"]
+display("File name:", file)
 plt.imshow(arrays_file[file], cmap="grey")
 plt.show()
 
