@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.17.3
 #   kernelspec:
-#     display_name: dml-project
+#     display_name: venvp
 #     language: python
 #     name: python3
 # ---
@@ -282,7 +282,40 @@ print(f"Accuracy CNN: {score_cnn[1] * 100:.2f}%")
 
 # %%
 from sklearn.decomposition import PCA
-pca = PCA(n_components=,whiten=).fg
+from sklearn.svm import SVC
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import classification_report
+
+# %%
+n_samples_train = data.x_train.shape[0]
+n_samples_test = data.x_test.shape[0]
+
+x_train_flatt = x_train.reshape((n_samples_train,-1))
+x_test_flatt  = x_test.reshape((n_samples_test,-1))
+
+# %%
+# le hacemos pca a los datos de prueba
+pca = PCA(n_components=0.95,whiten=True).fit(x_train_flatt)
+x_train_pca = pca.transform(x_train_flatt)
+x_test_pca = pca.transform(x_test_flatt)
+
+# %%
+param_grid = {'C': [1, 5, 10, 50],
+              'gamma': [0.0001, 0.0005, 0.001, 0.005]} #por lo general son valores menores a 1
+
+model = SVC(kernel='rbf', class_weight='balanced') #problemas multiclase
+grid = GridSearchCV(model, param_grid, scoring='roc_auc')
+
+grid.fit(x_train_pca, y_train)
+print(grid.best_params_)
+
+# %%
+model = grid.best_estimator_
+y_pred = model.predict(x_test_pca)
+
+# %%
+
+print(classification_report(y_test, y_pred))
 
 # %% [markdown]
 # ---
