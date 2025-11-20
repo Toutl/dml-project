@@ -132,7 +132,7 @@ for i, img_name in enumerate(test_images):
     resized = resize_image(cropped)
     band = convert_to_single_band(resized)
     final = normalize_intensity(band)
-
+    
     axes[i, 0].imshow(img)
     axes[i, 1].imshow(masked)
     axes[i, 2].imshow(cropped)
@@ -212,7 +212,10 @@ def apply_pipeline_to_all(filenames):
         cropped = crop_to_object(masked, mask)
         resized = resize_image(cropped)
         band = convert_to_single_band(resized)
-        processed_images.append(normalize_intensity(band))
+        final = normalize_intensity(band)
+        if final.max() > 1:
+            raise Exception(f"wot?: {final.max()}")
+        processed_images.append(final)
 
     return processed_images
 
