@@ -8,7 +8,7 @@
 #       format_version: '1.3'
 #       jupytext_version: 1.17.3
 #   kernelspec:
-#     display_name: dml-project
+#     display_name: venvp
 #     language: python
 #     name: python3
 # ---
@@ -492,11 +492,64 @@ tuner.search(data.x_train, data.y_train,
              validation_data=(data.x_valid, data.y_valid),
              epochs=10)
 
+
 # %% [markdown]
 # ---
 
 # %% [markdown]
 # ##### 2. MLP
+
+# %%
+def build_binary_mlp(hp, data):
+
+    model = Sequential()
+
+    # Flatten
+    model.add(Flatten(input_shape=data.x_train.shape[1:]))
+
+    units_1 = hp.Int("units_1", min_value=128, max_value=1024, step=128)
+    dropout_1 = hp.Float("dropout_1", min_value=0.0, max_value=0.5, step=0.1)
+
+    model.add(Dense(units_1, activation="relu"))
+    model.add(Dropout(dropout_1))
+
+    units_2 = hp.Int("units_2", min_value=128, max_value=1024, step=128)
+    dropout_2 = hp.Float("dropout_2", min_value=0.0, max_value=0.5, step=0.1)
+
+    model.add(Dense(units_2, activation="relu"))
+    model.add(Dropout(dropout_2))
+
+    #salida binaria
+    model.add(Dense(1, activation="sigmoid"))
+
+    lr = hp.Choice("learning_rate", [1e-2, 1e-3, 3e-4, 1e-4])
+
+    model.compile(
+        optimizer=Adam(learning_rate=lr),
+        loss="binary_crossentropy",
+        metrics=["accuracy"]
+    )
+
+    return model
+
+
+# %%
+tuner = kt.RandomSearch(
+    hypermodel=lambda hp: build_binary_mlp(hp, data),
+    objective="val_accuracy",
+    max_trials=15,
+    executions_per_trial=1, 
+    directory="mlp_tuning",
+    project_name="mlp_binary"
+)
+
+tuner.search(
+    data.x_train, data.y_train,
+    validation_data=(data.x_valid, data.y_valid),
+    epochs=40,
+    batch_size=32
+)
+
 
 # %% [markdown]
 # ---
