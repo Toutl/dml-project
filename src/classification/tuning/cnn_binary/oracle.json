@@ -1,0 +1,159 @@
+{
+  "ongoing_trials": {},
+  "hyperparameters": {
+    "space": [
+      {
+        "class_name": "Choice",
+        "config": {
+          "name": "filters1",
+          "default": 16,
+          "conditions": [],
+          "values": [
+            16,
+            32,
+            64
+          ],
+          "ordered": true
+        }
+      },
+      {
+        "class_name": "Choice",
+        "config": {
+          "name": "filters2",
+          "default": 32,
+          "conditions": [],
+          "values": [
+            32,
+            64,
+            128
+          ],
+          "ordered": true
+        }
+      },
+      {
+        "class_name": "Choice",
+        "config": {
+          "name": "lr",
+          "default": 0.0001,
+          "conditions": [],
+          "values": [
+            0.0001,
+            0.0003,
+            0.001
+          ],
+          "ordered": true
+        }
+      },
+      {
+        "class_name": "Choice",
+        "config": {
+          "name": "dropout",
+          "default": 0.2,
+          "conditions": [],
+          "values": [
+            0.2,
+            0.3,
+            0.4
+          ],
+          "ordered": true
+        }
+      }
+    ],
+    "values": {
+      "filters1": 16,
+      "filters2": 32,
+      "lr": 0.0001,
+      "dropout": 0.2
+    }
+  },
+  "start_order": [
+    "00",
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09"
+  ],
+  "end_order": [
+    "00",
+    "01",
+    "02",
+    "03",
+    "04",
+    "05",
+    "06",
+    "07",
+    "08",
+    "09"
+  ],
+  "run_times": {
+    "00": 1,
+    "01": 1,
+    "02": 1,
+    "03": 1,
+    "04": 1,
+    "05": 1,
+    "06": 1,
+    "07": 1,
+    "08": 1,
+    "09": 1
+  },
+  "retry_queue": [],
+  "seed": 9348,
+  "seed_state": 9396,
+  "tried_so_far": [
+    "6bdbda58566fa29fcb35f0bddb70c31d",
+    "1cc4ffb17124bd0a2f8f2fd5f20dd570",
+    "65963d5eb43eadf4f9e4c1f66e32d023",
+    "3c5727d557c919e953c613eb55baabea",
+    "d83326262d544a182ddb3a39a4db601c",
+    "1f9f3729e862599d0caf01ecfdd0a7bd",
+    "466a687827755c0679c1bf67f6ebcb75",
+    "2a4be28d63721172824a03a679b7dd32",
+    "17faf96efd2ec69ecc9de1f4e51c53cf",
+    "e4bf92de962a3d3eea386abbf83730f4"
+  ],
+  "id_to_hash": {
+    "00": "e4bf92de962a3d3eea386abbf83730f4",
+    "01": "17faf96efd2ec69ecc9de1f4e51c53cf",
+    "02": "3c5727d557c919e953c613eb55baabea",
+    "03": "6bdbda58566fa29fcb35f0bddb70c31d",
+    "04": "d83326262d544a182ddb3a39a4db601c",
+    "05": "1f9f3729e862599d0caf01ecfdd0a7bd",
+    "06": "65963d5eb43eadf4f9e4c1f66e32d023",
+    "07": "1cc4ffb17124bd0a2f8f2fd5f20dd570",
+    "08": "2a4be28d63721172824a03a679b7dd32",
+    "09": "466a687827755c0679c1bf67f6ebcb75"
+  },
+  "display": {
+    "search_start": "2025-11-20T17:50:19.456259",
+    "trial_start": {
+      "00": "2025-11-20T17:50:19.456259",
+      "01": "2025-11-21T08:32:47.801415",
+      "02": "2025-11-21T08:40:13.647119",
+      "03": "2025-11-21T08:43:00.388431",
+      "04": "2025-11-21T08:45:01.911044",
+      "05": "2025-11-21T08:50:07.379299",
+      "06": "2025-11-21T08:55:38.846251",
+      "07": "2025-11-21T09:00:04.202274",
+      "08": "2025-11-21T09:04:53.968932",
+      "09": "2025-11-21T09:07:29.820038"
+    },
+    "trial_number": {
+      "00": 1,
+      "01": 2,
+      "02": 3,
+      "03": 4,
+      "04": 5,
+      "05": 6,
+      "06": 7,
+      "07": 8,
+      "08": 9,
+      "09": 10
+    }
+  }
+}

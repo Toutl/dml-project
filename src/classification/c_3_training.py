@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.18.1
+#       jupytext_version: 1.17.3
 #   kernelspec:
 #     display_name: dml-project
 #     language: python
@@ -445,6 +445,52 @@ acc
 
 # %% [markdown]
 # ##### 1. CNN
+
+# %%
+import keras_tuner as kt
+
+
+# %%
+def build_model(hp):
+    model = Sequential()
+
+    f1 = hp.Choice("filters1", [16, 32, 64])
+    f2 = hp.Choice("filters2", [32, 64, 128])
+    lr = hp.Choice("lr", [1e-4, 3e-4, 1e-3])
+    drop = hp.Choice("dropout", [0.2, 0.3, 0.4])
+
+    model.add(Conv2D(f1, 3, activation="relu", padding="same",
+                     input_shape=data.x_train.shape[1:]))
+    model.add(MaxPooling2D(2))
+
+    model.add(Conv2D(f2, 3, activation="relu", padding="same"))
+    model.add(MaxPooling2D(2))
+
+    model.add(Flatten())
+    model.add(Dropout(drop))
+    model.add(Dense(1, activation="sigmoid"))
+
+    model.compile(
+        optimizer=Adam(lr),
+        loss="binary_crossentropy",
+        metrics=["accuracy"],
+    )
+    return model
+
+
+
+# %%
+tuner = kt.RandomSearch(
+    build_model,
+    objective="val_accuracy",
+    max_trials=10,
+    directory="tuning",
+    project_name="cnn_binary",
+)
+
+tuner.search(data.x_train, data.y_train,
+             validation_data=(data.x_valid, data.y_valid),
+             epochs=10)
 
 # %% [markdown]
 # ---
