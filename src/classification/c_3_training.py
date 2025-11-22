@@ -6,7 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
-#       jupytext_version: 1.17.3
+#       jupytext_version: 1.18.1
 #   kernelspec:
 #     display_name: dml-project
 #     language: python
@@ -37,21 +37,62 @@
 # %%
 # Básicas
 import os
-from dataclasses import dataclass
+import random
+import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from IPython.display import display
 from matplotlib import pyplot as plt
+from sklearn.metrics import (accuracy_score, auc, confusion_matrix, f1_score,
+                             precision_recall_curve, precision_score,
+                             recall_score, roc_auc_score, roc_curve)
 from sklearn.model_selection import train_test_split
+from sklearn.utils.validation import check_is_fitted
+
+# %%
+# NN
+import keras_tuner as kt
+import tensorflow as tf
+from keras.callbacks import EarlyStopping
+from keras.layers import (BatchNormalization, Conv2D, Dense, Dropout, Flatten,
+                          Input, MaxPooling2D, ReLU)
+from keras.models import Sequential
+from keras.optimizers import Adam
+from keras.regularizers import l2
+
+# %%
+# SV
+from sklearn.decomposition import PCA
+from sklearn.metrics import classification_report
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.svm import SVC
+
+# %%
+# LR
+from sklearn.linear_model import LogisticRegression
 
 # %%
 # Swag
 style = "/home/toutl/code/.machine.mplstyle"
 if os.path.exists(style):
     plt.style.use(style)
+
+# %%
+# Stablish seeds
+SEED = 35
+
+random.seed(SEED)
+np.random.seed(SEED)
+tf.random.set_seed(SEED)
+
+# Para keras
+os.environ["PYTHONHASHSEED"] = str(SEED)
+os.environ["TF_DETERMINISTIC_OPS"] = "1"
 
 # %% [markdown]
 # ---
@@ -93,14 +134,16 @@ plt.show()
 
 # %%
 # Obtenemos un arreglo con todas las imágenes
-images_array = np.empty((len(metadata_df), 64, 64))
+images_ids = metadata_df["image_id"].to_list()
 
-for i, img_name in enumerate(processed_images):
+images_array = np.empty((len(metadata_df), 64, 64), dtype=np.float32)
+
+for i, img_name in enumerate(images_ids):
     image = processed_images[img_name]
 
     # Asegurarse que las imágenes estén normalizadas
     if image.max() > 1 or image.min() < 0:
-        raise Exception(f"ERROR.\nMax: {image.max()}. Min: {image.min()}")
+        raise ValueError(f"Image {img_name} not normalized.")
 
     images_array[i] = image
 
@@ -118,31 +161,49 @@ print(images_array.shape, metadata_df["class"].shape)
 # %%
 # Objeto que encapsule los datos
 class Data:
-    def __init__(self, X, y, random_state=35):
-        # Train/test
+    def __init__(self, X, y, random_state=SEED):
+        # Splits
         x_train, x_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=random_state, stratify=y
         )
-
-        # Train/valid
         x_train, x_valid, y_train, y_valid = train_test_split(
             x_train, y_train, test_size=0.2, random_state=random_state, stratify=y_train
         )
 
         # Agregar canal
-        self.x_train = x_train[..., None]
+        self.X_train = x_train[..., None]
+        self.X_valid = x_valid[..., None]
+        self.X_test = x_test[..., None]
+
         self.y_train = np.asarray(y_train)
-
-        self.x_valid = x_valid[..., None]
         self.y_valid = np.asarray(y_valid)
-
-        self.x_test = x_test[..., None]
         self.y_test = np.asarray(y_test)
 
-        # Crear versiones planas
-        self.x_train_flat = self.x_train.reshape(len(self.x_train), -1)
-        self.x_valid_flat = self.x_valid.reshape(len(self.x_valid), -1)
-        self.x_test_flat = self.x_test.reshape(len(self.x_test), -1)
+        # Validar shapes
+        assert self.X_train.shape[1:] == (64, 64, 1), "Unexpected image shape"
+        assert len(self.X_train) == len(self.y_train), "Train feature/label mismatch"
+        assert len(self.X_valid) == len(self.y_valid), "Valid feature/label mismatch"
+        assert len(self.X_test) == len(self.y_test), "Test feature/label mismatch"
+
+        # Validar labels
+        unique_labels = np.unique(y)
+        assert set(unique_labels) <= {0, 1}, f"Unexpected labels found: {unique_labels}"
+
+    # Crear versiones planas
+    def _flatten(self, X):
+        return X.reshape(len(X), -1)
+
+    @property
+    def X_train_flat(self):
+        return self._flatten(self.X_train)
+
+    @property
+    def X_valid_flat(self):
+        return self._flatten(self.X_valid)
+
+    @property
+    def X_test_flat(self):
+        return self._flatten(self.X_test)
 
 
 # %%
@@ -154,17 +215,8 @@ data = Data(
 
 # %%
 # Checar
-display(
-    data.x_train.shape,
-    data.x_train_flat.shape,
-    data.y_train.shape,
-    data.x_valid_flat.shape,
-    data.x_valid.shape,
-    data.y_valid.shape,
-    data.x_test.shape,
-    data.x_test_flat.shape,
-    data.y_test.shape,
-)
+display(data.X_test_flat.shape)
+
 
 # %% [markdown]
 # ---
@@ -243,21 +295,14 @@ display(
 # ##### 1. CNN
 
 # %%
-# Bibliotecas
-from keras.callbacks import EarlyStopping
-from keras.layers import (BatchNormalization, Conv2D, Dense, Dropout, Flatten,
-                          Input, MaxPooling2D)
-from keras.models import Sequential
-from keras.optimizers import Adam
-
-
-# %%
 def visualize_training(hist):
     plt.plot(hist.history["accuracy"])
     plt.plot(hist.history["val_accuracy"])
     plt.title("accuracy")
     plt.ylabel("accuracy")
     plt.xlabel("epochs")
+    plt.ylim((0, 1))
+    plt.xlim((0, 20))
     plt.legend(["training", "validation"], loc="lower right")
     plt.show()
 
@@ -267,6 +312,8 @@ def visualize_training(hist):
     plt.title("loss")
     plt.ylabel("loss")
     plt.xlabel("epochs")
+    plt.ylim((0, 1))
+    plt.xlim((0, 20))
     plt.legend(["training", "validation"], loc="upper right")
     plt.show()
 
@@ -275,25 +322,34 @@ def visualize_training(hist):
 def build_binary_cnn(data):
     model = Sequential()
 
-    model.add(Input(shape=data.x_train.shape[1:]))
+    model.add(Input(shape=data.X_train.shape[1:]))
 
-    model.add(Conv2D(filters=32, kernel_size=3, padding="same", activation="relu"))
+    model.add(Conv2D(filters=32, kernel_size=3, padding="same"))
     model.add(BatchNormalization())
+    model.add(ReLU())
     model.add(MaxPooling2D(pool_size=2))
 
-    model.add(Conv2D(filters=32, kernel_size=3, padding="same", activation="relu"))
+    model.add(Conv2D(filters=32, kernel_size=3, padding="same"))
+    model.add(BatchNormalization())
+    model.add(ReLU())
     model.add(MaxPooling2D(pool_size=2))
 
-    model.add(Conv2D(filters=64, kernel_size=3, padding="same", activation="relu"))
+    model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
+    model.add(BatchNormalization())
+    model.add(ReLU())
     model.add(MaxPooling2D(pool_size=2))
 
-    model.add(Conv2D(filters=128, kernel_size=3, padding="same", activation="relu"))
+    model.add(Conv2D(filters=128, kernel_size=3, padding="same"))
+    model.add(BatchNormalization())
+    model.add(ReLU())
     model.add(MaxPooling2D(pool_size=2))
 
     model.add(Dropout(0.2))
     model.add(Flatten())
 
-    model.add(Dense(64, activation="relu"))
+    model.add(Dense(128))
+    model.add(BatchNormalization())
+    model.add(ReLU())
     model.add(Dropout(0.3))
 
     model.add(Dense(1, activation="sigmoid"))
@@ -302,7 +358,7 @@ def build_binary_cnn(data):
     model.compile(
         loss="binary_crossentropy",
         optimizer=optimizer,  # type: ignore
-        metrics=["accuracy"],
+        metrics=["accuracy", "AUC"],
     )
 
     return model
@@ -318,18 +374,18 @@ cnn_model.summary()
 
 # %%
 hist_cnn = cnn_model.fit(
-    data.x_train,
+    data.X_train,
     data.y_train,
     batch_size=32,
     epochs=20,
-    validation_data=(data.x_valid, data.y_valid),
+    validation_data=(data.X_valid, data.y_valid),
     callbacks=[early_stop],
 )
 
 # %%
 visualize_training(hist_cnn)
 
-score_cnn = cnn_model.evaluate(data.x_test, data.y_test, verbose=0)
+score_cnn = cnn_model.evaluate(data.X_test, data.y_test, verbose="0")
 print(f"Accuracy CNN: {score_cnn[1] * 100:.2f}%")
 
 
@@ -340,15 +396,16 @@ print(f"Accuracy CNN: {score_cnn[1] * 100:.2f}%")
 # ##### 2. MLP
 
 # %%
-def build_binary_mlp(data):
+def build_binary_mlp(data: Data):
     model = Sequential()
 
-    model.add(Flatten(input_shape=data.x_train.shape[1:]))
+    model.add(Input(shape=data.X_train.shape[1:]))
+    model.add(Flatten())
 
-    model.add(Dense(512, activation="relu"))
+    model.add(Dense(256, activation="relu", kernel_regularizer=l2(1e-4)))
     model.add(Dropout(0.3))
 
-    model.add(Dense(512, activation="relu"))
+    model.add(Dense(128, activation="relu"))
     model.add(Dropout(0.3))
 
     model.add(Dense(1, activation="sigmoid"))
@@ -356,7 +413,7 @@ def build_binary_mlp(data):
     model.compile(
         loss="binary_crossentropy",
         optimizer=Adam(3e-4),  # type: ignore
-        metrics=["accuracy"],
+        metrics=["accuracy", "AUC"],
     )
 
     return model
@@ -371,19 +428,19 @@ mlp_model.summary()
 
 # %%
 hist_mlp = mlp_model.fit(
-    data.x_train,
+    data.X_train,
     data.y_train,
     batch_size=32,
     epochs=40,
-    validation_data=(data.x_valid, data.y_valid),
+    validation_data=(data.X_valid, data.y_valid),
     callbacks=[early_stop],
 )
 
 # %%
 visualize_training(hist_mlp)
 
-score_mlp = mlp_model.evaluate(data.x_test, data.y_test, verbose="0")
-print(f"Accuracy CNN: {score_mlp[1] * 100:.2f}%")
+score_mlp = mlp_model.evaluate(data.X_test, data.y_test, verbose="0")
+print(f"Accuracy MLP: {score_mlp[1] * 100:.2f}%")
 
 # %% [markdown]
 # ---
@@ -392,31 +449,12 @@ print(f"Accuracy CNN: {score_mlp[1] * 100:.2f}%")
 # ##### 3. Support Vector Classifier
 
 # %%
-from sklearn.decomposition import PCA
-from sklearn.metrics import classification_report
-from sklearn.model_selection import GridSearchCV
-from sklearn.pipeline import Pipeline
-from sklearn.svm import SVC
+svc_model = SVC(kernel="rbf", C=5, gamma=0.001, class_weight="balanced")
+
+svc_model.fit(data.X_train_flat, data.y_train)
 
 # %%
-svc = SVC(kernel="rbf", C=5, gamma=0.001, class_weight="balanced")
-
-svc.fit(data.x_train_flat, data.y_train)
-
-y_pred = svc.predict(data.x_valid_flat)
-print(classification_report(data.y_valid, y_pred))
-
-# %%
-# utilizando PCA
-pca = PCA(n_components=0.95, whiten=True, random_state=42)
-x_train_pca = pca.fit_transform(data.x_train_flat)
-x_valid_pca = pca.transform(data.x_valid_flat)
-
-svc = SVC(kernel="rbf", C=5, gamma=0.001, class_weight="balanced")
-
-svc.fit(x_train_pca, data.y_train)
-
-y_pred = svc.predict(x_valid_pca)
+y_pred = svc_model.predict(data.X_valid_flat)
 print(classification_report(data.y_valid, y_pred))
 
 # %% [markdown]
@@ -426,18 +464,226 @@ print(classification_report(data.y_valid, y_pred))
 # ##### 4. Logistic Regression
 
 # %%
-from sklearn.linear_model import LogisticRegression
+logreg_model = LogisticRegression(max_iter=200, solver="liblinear")
+logreg_model.fit(data.X_train_flat, data.y_train)
 
 # %%
-log_reg = LogisticRegression(max_iter=200, solver="liblinear")
-log_reg.fit(data.x_train_flat, data.y_train)
+y_pred = logreg_model.predict(data.X_valid_flat)
+print(classification_report(data.y_valid, y_pred))
+
+
+# %% [markdown]
+# ---
+
+# %% [markdown]
+# ##### - Métricas
 
 # %%
-from sklearn.metrics import accuracy_score
+def get_scores(model, data, split="test", threshold=0.5):
+    X = getattr(data, f"X_{split}")
+    X_flat = getattr(data, f"X_{split}_flat")
 
-preds = log_reg.predict(data.x_test_flat)
-acc = accuracy_score(data.y_test, preds)
-acc
+    if "keras" in str(type(model)).lower():
+        y_score = model.predict(X, verbose=0).reshape(-1)
+        y_pred = (y_score >= threshold).astype(int)
+        return y_score, y_pred
+
+    if hasattr(model, "decision_function"):
+        y_score = model.decision_function(X_flat)
+        y_pred = (y_score >= threshold).astype(int)
+        return y_score, y_pred
+
+    if hasattr(model, "predict_proba"):
+        y_score = model.predict_proba(X_flat)[:, 1]
+        y_pred = (y_score >= threshold).astype(int)
+        return y_score, y_pred
+
+    y_pred = model.predict(X_flat)
+    return None, y_pred
+
+
+# %%
+def visualize_metrics(models, data, thresholds=None):
+    if thresholds is None:
+        thresholds = np.linspace(0, 1, 200)
+
+    plt.figure(figsize=(16, 5))
+
+    # 1. ROC Curve
+    plt.subplot(1, 3, 1)
+    for name, model in models.items():
+
+        y_score, _ = get_scores(model, data)
+
+        if y_score is None:
+            continue
+
+        fpr, tpr, _ = roc_curve(data.y_test, y_score)
+        model_auc = auc(fpr, tpr)
+        plt.plot(fpr, tpr, label=f"{name} (AUC={model_auc:.3f})")
+
+    plt.plot([0, 1], [0, 1], "w--")
+    plt.title("ROC Curve")
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.legend()
+
+    # 2. Precision–Recall Curve
+    plt.subplot(1, 3, 2)
+    for name, model in models.items():
+
+        y_score, _ = get_scores(model, data)
+
+        if y_score is None:
+            continue
+
+        precision, recall, _ = precision_recall_curve(data.y_test, y_score)
+        plt.plot(recall, precision, label=name)
+
+    plt.title("Precision–Recall Curve")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.legend()
+
+    # 3. F1 vs Threshold
+    plt.subplot(1, 3, 3)
+    for name, model in models.items():
+
+        y_score, _ = get_scores(model, data)
+
+        if y_score is None:
+            continue
+
+        f1_scores = []
+        for t in thresholds:
+            y_pred = (y_score >= t).astype(int)
+            f1_scores.append(f1_score(data.y_test, y_pred, zero_division=0))
+
+        plt.plot(thresholds, f1_scores, label=name)
+
+    plt.title("F1 vs Threshold")
+    plt.xlabel("Threshold")
+    plt.ylabel("F1 Score")
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+# %%
+def evaluate_models(models: dict, data: Data, threshold=0.5):
+    results = []
+
+    for name, model in models.items():
+
+        # Predicción
+        start = time.time()
+
+        if hasattr(model, "predict") and "keras" in str(type(model)).lower():
+            y_prob = model.predict(data.X_test, verbose=0).reshape(-1)
+            y_pred = (y_prob >= threshold).astype(int)
+
+        else:
+            check_is_fitted(model)
+
+            if hasattr(model, "decision_function"):
+                y_prob = model.decision_function(data.X_test_flat)
+                y_pred = model.predict(data.X_test_flat)
+
+            elif hasattr(model, "predict_proba"):
+                y_prob = model.predict_proba(data.X_test_flat)[:, 1]
+                y_pred = model.predict(data.X_test_flat)
+
+            else:
+                y_prob = None
+                y_pred = model.predict(data.X_test_flat)
+
+        runtime = time.time() - start
+
+        # Métricas
+        acc = accuracy_score(data.y_test, y_pred)
+        prec = precision_score(data.y_test, y_pred, zero_division=0)
+        rec = recall_score(data.y_test, y_pred, zero_division=0)
+        f1 = f1_score(data.y_test, y_pred, zero_division=0)
+
+        # ROC–AUC si hay probabilidades
+        if y_prob is not None:
+            try:
+                auc = roc_auc_score(data.y_test, y_prob)
+            except ValueError:
+                auc = np.nan
+        else:
+            auc = np.nan
+
+        # Complejidad aprox (número de parámetros)
+        if hasattr(model, "count_params"):
+            params = model.count_params()
+        elif hasattr(model, "coef_"):
+            params = model.coef_.size + model.intercept_.size
+        elif "svc" in name:
+            params = model.support_vectors_.shape[0]
+        else:
+            params = np.nan
+
+        results.append(
+            {
+                "Modelo": name,
+                "Accuracy": acc,
+                "Precision": prec,
+                "Recall": rec,
+                "F1": f1,
+                "ROC-AUC": auc,
+                "Parámetros": params,
+                "Tiempo_inferencia_s": runtime,
+            }
+        )
+
+    return pd.DataFrame(results)
+
+
+# %%
+def plot_confusion_matrices(models, data, threshold=0.5):
+    n = len(models)
+    plt.figure(figsize=(4 * n, 4))
+
+    for i, (name, model) in enumerate(models.items(), 1):
+        _, y_pred = get_scores(model, data, threshold=threshold)
+        cm = confusion_matrix(data.y_test, y_pred)
+
+        plt.subplot(1, n, i)
+        sns.heatmap(cm, annot=True, fmt="d", cmap="Blues")
+        plt.title(f"{name}")
+        plt.xlabel("Predicted")
+        plt.ylabel("True")
+
+    plt.tight_layout()
+    plt.show()
+
+
+# %%
+basic_models = {
+    "cnn": cnn_model,
+    "mlp": mlp_model,
+    "svc": svc_model,
+    "logreg": logreg_model,
+}
+
+# %%
+visualize_metrics(models=basic_models, data=data)
+
+results = evaluate_models(models=basic_models, data=data, threshold=0.4)
+results.round(2)
+
+# %%
+plot_confusion_matrices(basic_models, data, threshold=0.4)
+
+
+# %% [markdown]
+# **Algunas conclusiones:**
+#
+# - 
+#
+# -
 
 # %% [markdown]
 # #### Con ajuste de hiper-parámetros
@@ -447,56 +693,116 @@ acc
 # ##### 1. CNN
 
 # %%
-import keras_tuner as kt
-
-
-# %%
-def build_model(hp):
+def build_cnn_model(hp):
     model = Sequential()
 
-    f1 = hp.Choice("filters1", [16, 32, 64])
-    f2 = hp.Choice("filters2", [32, 64, 128])
-    lr = hp.Choice("lr", [1e-4, 3e-4, 1e-3])
-    drop = hp.Choice("dropout", [0.2, 0.3, 0.4])
+    # HP
+    f = hp.Choice("filters", [64, 128])
+    d = hp.Choice("dropout", [0.3, 0.4])
+    lr = hp.Choice("lr", [1e-4, 1e-3])
 
-    model.add(Conv2D(f1, 3, activation="relu", padding="same",
-                     input_shape=data.x_train.shape[1:]))
-    model.add(MaxPooling2D(2))
+    model.add(Input(shape=data.X_train.shape[1:]))
 
-    model.add(Conv2D(f2, 3, activation="relu", padding="same"))
-    model.add(MaxPooling2D(2))
+    model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
+    model.add(BatchNormalization())
+    model.add(ReLU())
+    model.add(MaxPooling2D(pool_size=2))
 
+    model.add(Conv2D(filters=64, kernel_size=3, padding="same"))
+    model.add(BatchNormalization())
+    model.add(ReLU())
+    model.add(MaxPooling2D(pool_size=2))
+
+    model.add(Conv2D(filters=f, kernel_size=3, padding="same"))
+    model.add(BatchNormalization())
+    model.add(ReLU())
+    model.add(MaxPooling2D(pool_size=2))
+
+    model.add(Conv2D(filters=128, kernel_size=3, padding="same"))
+    model.add(BatchNormalization())
+    model.add(ReLU())
+    model.add(MaxPooling2D(pool_size=2))
+
+    model.add(Dropout(f))
     model.add(Flatten())
-    model.add(Dropout(drop))
+
+    model.add(Dense(128))
+    model.add(BatchNormalization())
+    model.add(ReLU())
+    model.add(Dropout(0.3))
+
     model.add(Dense(1, activation="sigmoid"))
 
     model.compile(
-        optimizer=Adam(lr),
         loss="binary_crossentropy",
-        metrics=["accuracy"],
+        optimizer=Adam(learning_rate=lr),  # type: ignore
+        metrics=["accuracy", "AUC"],
     )
+
     return model
 
 
-
 # %%
-tuner = kt.RandomSearch(
-    build_model,
+cnn_tuner = kt.RandomSearch(
+    build_cnn_model,
     objective="val_accuracy",
     max_trials=10,
-    directory="tuning",
+    directory="cnn_tuning",
     project_name="cnn_binary",
 )
 
-tuner.search(data.x_train, data.y_train,
-             validation_data=(data.x_valid, data.y_valid),
-             epochs=10)
+cnn_tuner.search(
+    data.X_train, data.y_train, validation_data=(data.X_valid, data.y_valid), epochs=10
+)
+
 
 # %% [markdown]
 # ---
 
 # %% [markdown]
 # ##### 2. MLP
+
+# %%
+def build_mlp_model(hp):
+    model = Sequential()
+
+    # HP
+    u = hp.Choice("units", [128, 256])
+    d = hp.Choice("dropout1", [0.3, 0.4])
+    lr = hp.Choice("lr", [1e-4, 1e-3])
+
+    model.add(Input(shape=data.X_train.shape[1:]))
+    model.add(Flatten())
+
+    model.add(Dense(units=u, activation="relu"))
+    model.add(Dropout(0.3))
+
+    model.add(Dense(units=u / 2, activation="relu"))
+    model.add(Dropout(d))
+
+    model.add(Dense(1, activation="sigmoid"))
+
+    model.compile(
+        loss="binary_crossentropy",
+        optimizer=Adam(learning_rate=lr),  # type: ignore
+        metrics=["accuracy"],
+    )
+
+    return model
+
+
+# %%
+mlp_tuner = kt.RandomSearch(
+    build_mlp_model,
+    objective="val_accuracy",
+    max_trials=10,
+    directory="mlp_tuning",
+    project_name="cnn_binary",
+)
+
+mlp_tuner.search(
+    data.X_train, data.y_train, validation_data=(data.X_valid, data.y_valid), epochs=10
+)
 
 # %% [markdown]
 # ---
@@ -505,35 +811,65 @@ tuner.search(data.x_train, data.y_train,
 # ##### 3. Support Vector Classifier
 
 # %%
-# Con CV
-pipe = Pipeline(
+svc_pipe = Pipeline(
     [
-        ("pca", PCA(n_components=0.95, whiten=True, random_state=42)),
-        ("svc", SVC(class_weight="balanced", kernel="rbf")),
+        ("pca", PCA(n_components=0.85, whiten=True, random_state=35)),
+        ("svc", SVC(class_weight="balanced", kernel="rbf", probability=True)),
     ]
 )
 
 param_grid = {
-    # "svc__C": [4, 5, 6],
-    "svc__C": [5],
-    # "svc__gamma": [0.0011, 0.0012, 0.00013],
-    "svc__gamma": [0.0012],
+    "svc__C": [5],  # previas iteraciones nos indicaron este valor
+    "svc__gamma": [0.0011, 0.0012, 0.00013],
 }
 
-grid = GridSearchCV(pipe, param_grid, scoring="roc_auc", verbose=True, n_jobs=-1)
+svc_grid = GridSearchCV(svc_pipe, param_grid, scoring="roc_auc", verbose=2, n_jobs=-1)
 
-grid.fit(data.x_train_flat, data.y_train)
-print(grid.best_params_)
+svc_grid.fit(data.X_train_flat, data.y_train)
 
 # %%
-y_pred = grid.predict(data.x_test_flat)
+print(f"Best Params: {svc_grid.best_params_}")
+print(f"Best Cross-Val AUC: {svc_grid.best_score_:.4f}")
+
+# %%
+y_pred = svc_grid.predict(data.X_test_flat)
+y_proba = svc_grid.predict_proba(data.X_test_flat)[:, 1]
+
 print(classification_report(data.y_test, y_pred))
+
+print(f"\nTest Set ROC AUC: {roc_auc_score(data.y_test, y_proba):.4f}")
 
 # %% [markdown]
 # ---
 
 # %% [markdown]
-# ##### 1. CNN
+# ##### 4. Logistic Regression
+
+# %%
+logreg_pipe = Pipeline(
+    [
+        ("pca", PCA(random_state=35)),
+        ("logreg", LogisticRegression(solver="liblinear", max_iter=1000)),
+    ]
+)
+
+param_grid = {
+    "pca__n_components": [50, 100, 150, 200],
+    "logreg__C": [0.01, 0.1, 1, 10, 100],
+    "logreg__penalty": ["l1", "l2"],
+}
+
+logreg_grid = GridSearchCV(
+    logreg_pipe, param_grid, cv=5, scoring="roc_auc", n_jobs=-1, verbose=2
+)
+
+logreg_grid.fit(data.X_train_flat, data.y_train)
+
+# %%
+print(f"Best Params: {logreg_grid.best_params_}\n")
+
+y_pred = logreg_grid.predict(data.X_test_flat)
+print(classification_report(data.y_test, y_pred))
 
 # %% [markdown]
 # ---
