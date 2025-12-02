@@ -13,4 +13,5 @@ data/classification/processed/processed_images.zip
 **/uv.lock
 **/.ipynb_checkpoints
 **/pyproject.toml
+**/*_tuning
 

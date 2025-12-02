@@ -183,7 +183,7 @@ sample_metadata, _ = train_test_split(
     cleaned_metadata,
     test_size=0.85,
     stratify=cleaned_metadata["class"],
-    random_state=35,
+    random_state=353535,
 )
 display(sample_metadata)
 
@@ -224,7 +224,7 @@ def apply_pipeline_to_all(filenames):
 processed_images = apply_pipeline_to_all(filenames)
 
 # %%
-to_save_filename = f"sample_64x64_{len(sample_metadata)}"
+to_save_filename = f"sample_64x64_{len(sample_metadata)}_v2"
 
 sample_metadata.to_csv(processed_folder / f"{to_save_filename}.csv", index=False)
 

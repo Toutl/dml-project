@@ -241,23 +241,9 @@ display(data.X_test_flat.shape)
 # Los modelos a utilizar serán 4:
 #
 # - **CNN** (Red Neuronal Convolucional): 
-#     - Es la favorita. El estado del arte para imágenes.
-#     - Representa un sistema visual, capaz de detectar bordes, texturas y formas.
-#     - Aprende patrones complejos a costa de una gran cantidad de imágenes.
-#
 # - **MLP** (Perceptrón MultiCapa): 
-#     - Generaliza más que una CNN, tiene ceguera ante la espacialidad.
-#     - Util cuando no hay linealidad.
-#     - No es realmente utilizada para imágenes.
-#
 # - **SVC** (Clasificador de Soporte Vectorial): 
-#     - No entiende espacialidad ni la estructura de las imágenes.
-#     - Bueno para decisiones de frontera.
-#     - No muy amigable con conjuntos de datos grandes.
-#
 # - **LR** (Regresión Logística): 
-#     - Útil como base, para reconocer la necesidad de linealidad o estructuras complejas.
-#     - Bueno para establecer fronteras.
 
 # %% [markdown]
 # Las métricas consideradas para evaluar dichos modelos, deberán ser congruentes para el problema, una clasificación binaria.
@@ -571,7 +557,7 @@ def visualize_metrics(models, data, thresholds=None):
 
 
 # %%
-def evaluate_models(models: dict, data: Data, threshold=0.5):
+def evaluate_models2(models: dict, data: Data, threshold=0.5):
     results = []
 
     for name, model in models.items():
@@ -620,8 +606,8 @@ def evaluate_models(models: dict, data: Data, threshold=0.5):
             params = model.count_params()
         elif hasattr(model, "coef_"):
             params = model.coef_.size + model.intercept_.size
-        elif "svc" in name:
-            params = model.support_vectors_.shape[0]
+        # elif "svc" in name:
+        #     params = model.support_vectors_.shape[0]
         else:
             params = np.nan
 
@@ -671,7 +657,7 @@ basic_models = {
 # %%
 visualize_metrics(models=basic_models, data=data)
 
-results = evaluate_models(models=basic_models, data=data, threshold=0.4)
+results = evaluate_models2(models=basic_models, data=data, threshold=0.4)
 results.round(2)
 
 # %%
@@ -688,6 +674,39 @@ plot_confusion_matrices(basic_models, data, threshold=0.4)
 # %% [markdown]
 # #### Con ajuste de hiper-parámetros
 # ---
+
+# %%
+def evaluate_models(models, data, threshold=0.5):
+    rows = []
+
+    for name, model in models.items():
+        y_score, y_pred = get_scores(model, data, threshold=threshold)
+
+        acc  = accuracy_score(data.y_test, y_pred)
+        prec = precision_score(data.y_test, y_pred, zero_division=0)
+        rec  = recall_score(data.y_test, y_pred, zero_division=0)
+        f1   = f1_score(data.y_test, y_pred, zero_division=0)
+
+        # AUC solo cuando hay scores continuos
+        if y_score is not None:
+            try:
+                auc_value = roc_auc_score(data.y_test, y_score)
+            except ValueError:
+                auc_value = np.nan
+        else:
+            auc_value = np.nan
+
+        rows.append({
+            "Modelo": name,
+            "Accuracy": acc,
+            "Precision": prec,
+            "Recall": rec,
+            "F1": f1,
+            "AUC": auc_value
+        })
+
+    return pd.DataFrame(rows).sort_values(by="AUC", ascending=False)
+
 
 # %% [markdown]
 # ##### 1. CNN
@@ -723,7 +742,7 @@ def build_cnn_model(hp):
     model.add(ReLU())
     model.add(MaxPooling2D(pool_size=2))
 
-    model.add(Dropout(f))
+    model.add(Dropout(d))
     model.add(Flatten())
 
     model.add(Dense(128))
@@ -742,6 +761,7 @@ def build_cnn_model(hp):
     return model
 
 
+
 # %%
 cnn_tuner = kt.RandomSearch(
     build_cnn_model,
@@ -755,6 +775,17 @@ cnn_tuner.search(
     data.X_train, data.y_train, validation_data=(data.X_valid, data.y_valid), epochs=10
 )
 
+# %%
+best_cnn = cnn_tuner.get_best_models(num_models=1)[0]
+best_cnn.summary()
+
+# %%
+best_hp = cnn_tuner.get_best_hyperparameters(1)[0]
+best_hp.values
+
+# %%
+evaluate_models({"best_cnn": best_cnn}, data).round(3)
+
 
 # %% [markdown]
 # ---
@@ -767,17 +798,18 @@ def build_mlp_model(hp):
     model = Sequential()
 
     # HP
-    u = hp.Choice("units", [128, 256])
-    d = hp.Choice("dropout1", [0.3, 0.4])
+    u1 = hp.Choice("units1", [128, 256])
+    u2 = hp.Choice("units2", [128, 256])
+    d = hp.Choice("dropout", [0.3, 0.4])
     lr = hp.Choice("lr", [1e-4, 1e-3])
 
     model.add(Input(shape=data.X_train.shape[1:]))
     model.add(Flatten())
 
-    model.add(Dense(units=u, activation="relu"))
+    model.add(Dense(units=u1, activation="relu"))
     model.add(Dropout(0.3))
 
-    model.add(Dense(units=u / 2, activation="relu"))
+    model.add(Dense(units=u2, activation="relu"))
     model.add(Dropout(d))
 
     model.add(Dense(1, activation="sigmoid"))
@@ -785,7 +817,7 @@ def build_mlp_model(hp):
     model.compile(
         loss="binary_crossentropy",
         optimizer=Adam(learning_rate=lr),  # type: ignore
-        metrics=["accuracy"],
+        metrics=["accuracy", "AUC"],
     )
 
     return model
@@ -801,8 +833,19 @@ mlp_tuner = kt.RandomSearch(
 )
 
 mlp_tuner.search(
-    data.X_train, data.y_train, validation_data=(data.X_valid, data.y_valid), epochs=10
+    data.X_train, data.y_train, validation_data=(data.X_valid, data.y_valid), epochs=15
 )
+
+# %%
+best_mlp = mlp_tuner.get_best_models(num_models=1)[0]
+best_mlp.summary()
+
+# %%
+best_hp = mlp_tuner.get_best_hyperparameters(1)[0]
+best_hp.values
+
+# %%
+evaluate_models({"best_mlp": best_mlp}, data).round(2)
 
 # %% [markdown]
 # ---
@@ -811,19 +854,35 @@ mlp_tuner.search(
 # ##### 3. Support Vector Classifier
 
 # %%
-svc_pipe = Pipeline(
-    [
-        ("pca", PCA(n_components=0.85, whiten=True, random_state=35)),
-        ("svc", SVC(class_weight="balanced", kernel="rbf", probability=True)),
-    ]
-)
+import warnings
+import os
+
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API")
+warnings.filterwarnings("ignore", module=r".*multiprocessing.queues")
+
+warnings.filterwarnings("ignore", message=".*pkg_resources is deprecated.*")
+os.environ["PYTHONWARNINGS"] = "ignore::UserWarning:pkg_resources"
+
+# %%
+svc_pipe = Pipeline([
+    ("pca", PCA(whiten=True, random_state=35)),
+    ("svc", SVC(kernel="rbf", class_weight="balanced"))
+])
 
 param_grid = {
-    "svc__C": [5],  # previas iteraciones nos indicaron este valor
+    "pca__n_components": [50, 100, 150, 200],
+    "svc__C": [5],  # previas iteraciones nos indicaron este valor como el único útil
     "svc__gamma": [0.0011, 0.0012, 0.00013],
 }
 
-svc_grid = GridSearchCV(svc_pipe, param_grid, scoring="roc_auc", verbose=2, n_jobs=-1)
+svc_grid = GridSearchCV(
+    svc_pipe,
+    param_grid=param_grid,
+    scoring="roc_auc",
+    n_jobs=-1,
+    cv=5,
+    verbose=2
+)
 
 svc_grid.fit(data.X_train_flat, data.y_train)
 
@@ -833,17 +892,24 @@ print(f"Best Cross-Val AUC: {svc_grid.best_score_:.4f}")
 
 # %%
 y_pred = svc_grid.predict(data.X_test_flat)
-y_proba = svc_grid.predict_proba(data.X_test_flat)[:, 1]
+y_proba = svc_grid.decision_function(data.X_test_flat)
 
 print(classification_report(data.y_test, y_pred))
 
 print(f"\nTest Set ROC AUC: {roc_auc_score(data.y_test, y_proba):.4f}")
+
+# %%
+best_svc = svc_grid.best_estimator_
+evaluate_models({"best_svc": best_svc}, data).round(2)
 
 # %% [markdown]
 # ---
 
 # %% [markdown]
 # ##### 4. Logistic Regression
+
+# %%
+warnings.filterwarnings('ignore')
 
 # %%
 logreg_pipe = Pipeline(
@@ -854,9 +920,9 @@ logreg_pipe = Pipeline(
 )
 
 param_grid = {
-    "pca__n_components": [50, 100, 150, 200],
-    "logreg__C": [0.01, 0.1, 1, 10, 100],
-    "logreg__penalty": ["l1", "l2"],
+    "pca__n_components": [0.95, 0.9, 0.85],
+    "logreg__C": [0.005, 0.01, 0.015],
+    "logreg__penalty": ["l1"],
 }
 
 logreg_grid = GridSearchCV(
@@ -871,15 +937,151 @@ print(f"Best Params: {logreg_grid.best_params_}\n")
 y_pred = logreg_grid.predict(data.X_test_flat)
 print(classification_report(data.y_test, y_pred))
 
+# %%
+best_logreg = logreg_grid.best_estimator_
+evaluate_models({"best_logreg": best_logreg}, data).round(2)
+
+# %% [markdown]
+# #### General evaluación
+
+# %%
+best_models = {
+    "best_cnn": best_cnn,
+    "best_mlp": best_mlp,
+    "best_svc": best_svc,
+    "best_logreg": best_logreg,
+}
+
+# %%
+evaluate_models(best_models, data).round(3)
+
+# %%
+visualize_metrics(models=best_models, data=data)
+
+# %% [markdown]
+# #
+
+# %% [markdown]
+# Las conclusiones de los modelos utilizados fueron: 
+#
+# - **CNN** (Red Neuronal Convolucional): 
+#     - Es la favorita. El estado del arte para imágenes.
+#     - Representa un sistema visual, capaz de detectar bordes, texturas y formas.
+#     - Aprende patrones complejos a costa de una gran cantidad de imágenes (lo cual cumplimos).
+#     - Tuvo la mejor capacidad para distinguir las clases de las imagenes basandonos en las graficas de las metricas.
+#     - la cantidad de parametros fueron alrededor de 0.5m
+#     - y su tiempo fue 10 veces mas a comparacion de mlp siendo la mas tardada seguida de svc
+#      
+# - **MLP** (Perceptrón MultiCapa): 
+#     - Generaliza más que una CNN, tiene ceguera ante la espacialidad.
+#     - Util cuando no hay linealidad.
+#     - No es realmente utilizada para imágenes.
+#     - Pareciera que aprendio bien los datos pero sigue siendo peor que la cnn porque no entiende d eespacialidad
+#
+# - **SVC** (Clasificador de Soporte Vectorial): 
+#     - No entiende espacialidad ni la estructura de las imágenes.
+#     - Bueno para decisiones de frontera.
+#     - No muy amigable con conjuntos de datos grandes.
+#     - Fue de las mas tardado entre los 4 modelos 
+#
+# - **LR** (Regresión Logística): 
+#     - Útil como base, para reconocer la necesidad de linealidad o estructuras complejas.
+#     - Bueno para establecer fronteras.
+#     - Fue muy mediocre al identificar las clases y el peor en comparacion a todos los modelos
+#     - Fue la que menos tardo haciendo inferencia, esto puede ayudar como un primer estimador.
+
 # %% [markdown]
 # ---
 # ---
 
 # %% [markdown]
-# ### Conclusiones
+# ### Prueba con nuevos datos
+
+# %%
+# Leemos la metadata (etiquetas e ids)
+metadata2_df = pd.read_csv(processed_folder / "sample_64x64_10570_v2.csv").astype(str)
+display(metadata2_df.head())
+
+# %%
+# Cargamos las imágenes procesadas
+processed_images_2 = np.load(processed_folder / "sample_64x64_10570_v2.npz")
+files2 = processed_images_2.files
+print(files2[:10])
+print(len(files2))
+
+# %%
+# Ejemplo de uso de una imágen
+img_name = files2[0]
+idx = metadata2_df.index[metadata2_df["image_id"] == img_name][0]
+img_class = metadata2_df.at[idx, "class"]
+
+plt.imshow(processed_images_2[img_name], cmap="gray")
+plt.title(f"Image {img_name}. Class {img_class}")
+plt.axis("off")
+plt.show()
+
+# %%
+# Obtenemos un arreglo con todas las imágenes
+images_ids_2 = metadata2_df["image_id"].to_list()
+
+images_array_2 = np.empty((len(metadata2_df), 64, 64), dtype=np.float32)
+
+for i, img_name in enumerate(images_ids_2):
+    image = processed_images_2[img_name]
+
+    # Asegurarse que las imágenes estén normalizadas
+    if image.max() > 1 or image.min() < 0:
+        raise ValueError(f"Image {img_name} not normalized.")
+
+    images_array_2[i] = image
+
+# %%
+# Revisando la cantidad de etiquetas respecto a la cantidad de imágenes, y congruencia de tamaños
+print(images_array_2.shape, metadata2_df["class"].shape)
 
 # %% [markdown]
-#
+# ---
 
 # %% [markdown]
+# ##### 2. Separación de datos en entrenamiento y prueba
+
+# %%
+# Se genera el objeto para los datos
+data2 = Data(
+    X=images_array_2.astype("float32"),
+    y=metadata2_df["class"].astype("int8"),
+)
+
+# %%
+# Checar
+display(data2.X_test_flat.shape)
+
+# %% [markdown]
+# ---
+
+# %% [markdown]
+# ##### 3. Prueba con el mejor modelo
+
+# %%
+mejor_modelo = best_cnn
+
+print(evaluate_models({"mejor_modelo": mejor_modelo}, data2).round(2))
+
+# %%
+visualize_metrics(models={"mejor_modelo": mejor_modelo}, data=data2)
+
+# %% [markdown]
+# ##### Conclusiones
+
+# %% [markdown]
+# La comparación entre modelos mostró que la CNN fue claramente la mejor opción para clasificar las imágenes. Sus resultados finales (Accuracy 0.78, F1 0.73, ROC-AUC 0.85) indican que aprendió patrones visuales relevantes y generalizó razonablemente bien en datos nuevos, aun con un costo computacional mayor y un tiempo de inferencia más largo.
 #
+# El MLP y el SVC mostraron limitaciones claras: ambos pierden información espacial al trabajar con imágenes aplanadas, lo que redujo su capacidad predictiva y, en el caso del SVC, elevó el tiempo de cómputo. La Regresión Logística sirvió únicamente como línea base; fue la más rápida pero también la más débil en todas las métricas.
+#
+# En conjunto, los resultados confirman que la arquitectura convolucional es la más adecuada para este tipo de datos y ofrece el mejor balance entre desempeño y estabilidad, incluso sin posibilidad de realizar más pruebas.
+
+# %% [markdown]
+# **Siguientes pasos:** Una mejora natural sería explorar técnicas de aumento de datos, ajustar la arquitectura con otras variantes que puedan ser más eficientes y optimizar el preprocesamiento para reducir el tiempo de inferencia sin sacrificar desempeño. Estos ajustes permitirían refinar la generalización del modelo en futuros experimentos.
+
+# %% [markdown]
+# ---
